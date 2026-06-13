@@ -88,3 +88,26 @@ pyinstaller --onefile --windowed --name ironpride-display \
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Desktop integration (application menu icon)
+
+Create a `.desktop` launcher so the app appears in your application menu:
+
+```bash
+cat > ~/.local/share/applications/ironpride.desktop << 'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Iron Pride Display
+Comment=Case display editor for Iron Pride Invader Q9MX
+Exec=/home/YOUR_USERNAME/ironpride-display/dist/ironpride-display
+Icon=video-display
+Categories=Utility;
+Terminal=false
+DESKTOP
+
+update-desktop-database ~/.local/share/applications/
+```
+
+Replace `YOUR_USERNAME` with your actual Linux username (e.g. `whoami` to check).
+
+To enable autostart on login, launch the app and tick **"Launch on startup"** in the settings panel — it will write the correct path automatically.
