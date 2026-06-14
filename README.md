@@ -11,7 +11,7 @@ reverse-engineering its USB serial protocol.
 
 ## Download
 
-**[→ Latest release (v1.0)](https://github.com/GitFlowLink/ironpride-display/releases/tag/v1.0)**
+**[→ Latest release (v1.1)](https://github.com/GitFlowLink/ironpride-display/releases/tag/v1.1)**
 
 Pre-built binary for Linux x86-64 — no Python required, just `ffmpeg` on the system.
 
