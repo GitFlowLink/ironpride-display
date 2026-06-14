@@ -11,6 +11,7 @@ GIF/видео крутятся через GUI-таймер (без гонок �
 Запуск: python3 ironpride_editor.py   |   фоновый: --background
 """
 import sys, os, json, math, glob, struct, time, threading, subprocess, queue
+import urllib.request
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
@@ -20,7 +21,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
 )
 from PyQt6.QtGui import (QPixmap, QImage, QImageReader, QPainter, QPen, QColor,
-                         QBrush, QIcon, QFont, QFontMetrics, QLinearGradient)
+                         QBrush, QIcon, QFont, QFontMetrics, QLinearGradient, QDesktopServices)
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSettings, QUrl
 from PIL import Image, ImageOps
 import serial
@@ -467,17 +468,155 @@ class Streamer:
             self.ser = None
 
 
-FILTERS = ["Нет", "Ч/б", "Краснее", "Розовее", "Зеленее", "Синее"]
+
+REPO_URL = "https://github.com/GitFlowLink/ironpride-display"
+VERSION  = "1.1"
+API_LATEST = "https://api.github.com/repos/GitFlowLink/ironpride-display/releases/latest"
+
+TRANSLATIONS = {
+    "ru": {
+        "title":        "Iron Pride Display Editor",
+        "add_img":      "+ Картинка",
+        "add_gif":      "+ GIF",
+        "add_video":    "+ Видео",
+        "add_text":     "+ Текст",
+        "sensors":      "Датчики:",
+        "layers":       "Слои (верхний = спереди):",
+        "layer_props":  "— Свойства слоя —",
+        "text_ph":      "текст надписи",
+        "rainbow":      "Радуга",
+        "color":        "Цвет",
+        "text_size":    "Размер текста:",
+        "opacity":      "Прозрачность слоя:",
+        "spin":         "Вращать слой",
+        "spin_speed":   "Скорость вращения:",
+        "media_speed":  "Скорость GIF/видео %:",
+        "filter":       "Фильтр поверх:",
+        "brightness":   "Яркость экрана:",
+        "stream_start": "▶ Старт на экран",
+        "stream_stop":  "■ Стоп",
+        "rotate":       "⟳ Поворот панели",
+        "themes":       "Темы:",
+        "t_load":       "Загрузить",
+        "t_save":       "Сохранить",
+        "t_del":        "Удалить",
+        "tray_chk":     "Сворачивать в трей",
+        "auto_chk":     "Запускать с системой",
+        "repo_btn":     "GitHub репозиторий",
+        "tray_msg":     "Свёрнуто в трей, стрим продолжается",
+        "tray_show":    "Показать окно",
+        "tray_toggle":  "Старт/стоп стрим",
+        "tray_quit":    "Выход",
+        "port_err":     "ошибка порта",
+        "t_saved":      "Тема «{}» сохранена",
+        "t_name_ask":   "Название:",
+        "t_name_title": "Сохранить тему",
+        "filters":      ["Нет", "Ч/б", "Краснее", "Розовее", "Зеленее", "Синее"],
+        "no_video":     "нет QtMultimedia",
+        "repo":         "GitHub",
+        "update_avail": "Обновить до {}",
+        "update_none":  "",
+        "lang_btn":     "EN",
+    },
+    "en": {
+        "title":        "Iron Pride Display Editor",
+        "add_img":      "+ Image",
+        "add_gif":      "+ GIF",
+        "add_video":    "+ Video",
+        "add_text":     "+ Text",
+        "sensors":      "Sensors:",
+        "layers":       "Layers (top = front):",
+        "layer_props":  "— Layer properties —",
+        "text_ph":      "label text",
+        "rainbow":      "Rainbow",
+        "color":        "Color",
+        "text_size":    "Text size:",
+        "opacity":      "Layer opacity:",
+        "spin":         "Auto-rotate",
+        "spin_speed":   "Rotation speed:",
+        "media_speed":  "GIF/video speed %:",
+        "filter":       "Color filter:",
+        "brightness":   "Screen brightness:",
+        "stream_start": "▶ Stream to screen",
+        "stream_stop":  "■ Stop",
+        "rotate":       "⟳ Rotate panel",
+        "themes":       "Themes:",
+        "t_load":       "Load",
+        "t_save":       "Save",
+        "t_del":        "Delete",
+        "tray_chk":     "Minimize to tray",
+        "auto_chk":     "Launch on startup",
+        "repo_btn":     "GitHub repository",
+        "tray_msg":     "Minimized to tray, stream continues",
+        "tray_show":    "Show window",
+        "tray_toggle":  "Start/stop stream",
+        "tray_quit":    "Quit",
+        "port_err":     "port error",
+        "t_saved":      "Theme «{}» saved",
+        "t_name_ask":   "Name:",
+        "t_name_title": "Save theme",
+        "filters":      ["None", "B/W", "Redder", "Pinker", "Greener", "Bluer"],
+        "no_video":     "QtMultimedia missing",
+        "repo":         "GitHub",
+        "update_avail": "Update to {}",
+        "update_none":  "",
+        "lang_btn":     "RU",
+    },
+}
+
+def _icon_globe():
+    pm = QPixmap(40, 40); pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(90, 200, 130), 3)); p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(5, 5, 30, 30)
+    p.drawEllipse(14, 5, 12, 30)
+    p.drawLine(5, 20, 35, 20)
+    p.drawLine(8, 12, 32, 12); p.drawLine(8, 28, 32, 28)
+    p.end(); return QIcon(pm)
+
+def _icon_git():
+    pm = QPixmap(40, 40); pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(240, 80, 30), 4)); p.setBrush(QColor(240, 80, 30))
+    # branch: line + two nodes
+    p.drawLine(12, 8, 12, 32)
+    p.setPen(QPen(QColor(240, 80, 30), 4))
+    p.drawLine(12, 14, 28, 22)
+    p.setBrush(QColor(245, 110, 60))
+    p.drawEllipse(6, 4, 12, 12)
+    p.drawEllipse(6, 28, 12, 12)
+    p.drawEllipse(24, 16, 12, 12)
+    p.end(); return QIcon(pm)
+
+
+def _make_icon():
+    """Generate app icon: blue rounded rect (display shape) with white dot."""
+    pm = QPixmap(64, 64); pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(30, 30, 40))
+    p.drawRoundedRect(2, 2, 60, 60, 10, 10)
+    p.setBrush(QColor(40, 120, 220))
+    p.drawRoundedRect(8, 22, 48, 20, 5, 5)
+    p.setBrush(QColor(255, 255, 255))
+    p.drawEllipse(26, 44, 12, 8)
+    p.setBrush(QColor(120, 200, 255))
+    p.drawEllipse(14, 27, 10, 10)
+    p.end()
+    return QIcon(pm)
+
+# FILTERS now comes from TRANSLATIONS[lang]["filters"]
+FILTERS = TRANSLATIONS["ru"]["filters"]
 
 class Editor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Iron Pride Display Editor")
-        self.resize(1150, 600)
         self.settings = QSettings("ironpride", "editor")
+        self._lang = self.settings.value("lang", "ru")
         self.layers = []
         self.streamer = Streamer()
         self._last = time.time()
+        self.resize(1150, 600)
 
         self.scene = QGraphicsScene(0, 0, PANEL_W, PANEL_H)
         self.scene.setBackgroundBrush(QColor(0, 0, 0))
@@ -487,18 +626,44 @@ class Editor(QMainWindow):
         self.view.on_drop = self._on_drop
         self.view.on_delete = self.delete_selected
 
+        # реестр переводимых виджетов: (widget, key, setter)
+        self._tr = []
+        def reg(w, key, setter="text"):
+            self._tr.append((w, key, setter)); return w
+
         side = QVBoxLayout()
+        # верх: язык + гитхаб + версия
+        toprow = QHBoxLayout()
+        self.b_lang = QPushButton(_icon_globe(), self.T("lang_btn"))
+        self.b_lang.setFixedWidth(58); self.b_lang.clicked.connect(self._toggle_lang)
+        self.b_repo = QPushButton(_icon_git(), self.T("repo"))
+        self.b_repo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_repo.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REPO_URL)))
+        reg(self.b_repo, "repo")
+        self.ver_lbl = QLabel(f"v{VERSION}")
+        self.ver_lbl.setStyleSheet("color:#888;")
+        toprow.addWidget(self.b_lang); toprow.addWidget(self.b_repo)
+        toprow.addWidget(self.ver_lbl); toprow.addStretch()
+        side.addLayout(toprow)
+
+        # кнопка обновления (скрыта пока нет апдейта)
+        self.b_update = QPushButton(); self.b_update.setVisible(False)
+        self.b_update.setStyleSheet("background:#2e7d32; color:white; font-weight:bold;")
+        self.b_update.clicked.connect(self._do_update)
+        side.addWidget(self.b_update)
+
         addrow = QGridLayout()
-        for n, (text, kind) in enumerate((("+ Картинка", "img"), ("+ GIF", "gif"),
-                                          ("+ Видео", "video"), ("+ Текст", "text"))):
-            b = QPushButton(text)
+        self._add_btns = []
+        for n, (key, kind) in enumerate((("add_img", "img"), ("add_gif", "gif"),
+                                         ("add_video", "video"), ("add_text", "text"))):
+            b = QPushButton(self.T(key)); reg(b, key)
             if kind == "video" and not HAS_VIDEO:
-                b.setEnabled(False); b.setToolTip("нет QtMultimedia")
+                b.setEnabled(False); b.setToolTip(self.T("no_video"))
             b.clicked.connect(lambda _, k=kind: self.add_layer(k))
             addrow.addWidget(b, n // 2, n % 2)
         side.addLayout(addrow)
 
-        side.addWidget(QLabel("Датчики:"))
+        side.addWidget(reg(QLabel(self.T("sensors")), "sensors"))
         srow = QGridLayout(); self.stat_chk = {}
         for n, (mk, lbl) in enumerate((("cpu", "CPU"), ("gpu", "GPU"), ("ram", "RAM"),
                                        ("cput", "CPU°"), ("gput", "GPU°"))):
@@ -507,7 +672,7 @@ class Editor(QMainWindow):
             srow.addWidget(ch, n // 3, n % 3); self.stat_chk[mk] = ch
         side.addLayout(srow)
 
-        side.addWidget(QLabel("Слои (верхний = спереди):"))
+        side.addWidget(reg(QLabel(self.T("layers")), "layers"))
         self.list = QListWidget(); self.list.currentRowChanged.connect(self._select)
         side.addWidget(self.list)
         row = QHBoxLayout()
@@ -517,61 +682,68 @@ class Editor(QMainWindow):
         side.addLayout(row)
 
         side.addWidget(self._hline())
-        side.addWidget(QLabel("— Свойства слоя —"))
-        self.txt_edit = QLineEdit(); self.txt_edit.setPlaceholderText("текст надписи")
+        side.addWidget(reg(QLabel(self.T("layer_props")), "layer_props"))
+        self.txt_edit = QLineEdit(); self.txt_edit.setPlaceholderText(self.T("text_ph"))
+        reg(self.txt_edit, "text_ph", "placeholder")
         self.txt_edit.textChanged.connect(self._text_changed); side.addWidget(self.txt_edit)
         trow = QHBoxLayout()
-        self.chk_rainbow = QCheckBox("Радуга"); self.chk_rainbow.toggled.connect(self._rainbow)
-        b_col = QPushButton("Цвет"); b_col.clicked.connect(self._pick_color)
+        self.chk_rainbow = QCheckBox(self.T("rainbow")); reg(self.chk_rainbow, "rainbow")
+        self.chk_rainbow.toggled.connect(self._rainbow)
+        b_col = QPushButton(self.T("color")); reg(b_col, "color"); b_col.clicked.connect(self._pick_color)
         trow.addWidget(self.chk_rainbow); trow.addWidget(b_col); side.addLayout(trow)
-        side.addWidget(QLabel("Размер текста:"))
+        side.addWidget(reg(QLabel(self.T("text_size")), "text_size"))
         self.fsize = QSlider(Qt.Orientation.Horizontal); self.fsize.setRange(12, 220)
         self.fsize.setValue(64); self.fsize.valueChanged.connect(self._fsize); side.addWidget(self.fsize)
 
-        side.addWidget(QLabel("Прозрачность слоя:"))
+        side.addWidget(reg(QLabel(self.T("opacity")), "opacity"))
         self.opac = QSlider(Qt.Orientation.Horizontal); self.opac.setRange(0, 100)
         self.opac.setValue(100); self.opac.valueChanged.connect(self._opacity); side.addWidget(self.opac)
-        self.chk_spin = QCheckBox("Вращать слой"); self.chk_spin.toggled.connect(self._spin)
+        self.chk_spin = QCheckBox(self.T("spin")); reg(self.chk_spin, "spin"); self.chk_spin.toggled.connect(self._spin)
         side.addWidget(self.chk_spin)
-        side.addWidget(QLabel("Скорость вращения:"))
+        side.addWidget(reg(QLabel(self.T("spin_speed")), "spin_speed"))
         self.spinsp = QSlider(Qt.Orientation.Horizontal); self.spinsp.setRange(0, 360)
         self.spinsp.setValue(60); self.spinsp.valueChanged.connect(self._spin_speed); side.addWidget(self.spinsp)
-        side.addWidget(QLabel("Скорость GIF/видео %:"))
+        side.addWidget(reg(QLabel(self.T("media_speed")), "media_speed"))
         self.mspeed = QSlider(Qt.Orientation.Horizontal); self.mspeed.setRange(10, 300)
         self.mspeed.setValue(100); self.mspeed.valueChanged.connect(self._mspeed); side.addWidget(self.mspeed)
 
         side.addWidget(self._hline())
-        side.addWidget(QLabel("Фильтр поверх:"))
-        self.filt = QComboBox(); self.filt.addItems(FILTERS); side.addWidget(self.filt)
-        side.addWidget(QLabel("Яркость экрана:"))
+        side.addWidget(reg(QLabel(self.T("filter")), "filter"))
+        self.filt = QComboBox(); self.filt.addItems(self.T("filters")); side.addWidget(self.filt)
+        side.addWidget(reg(QLabel(self.T("brightness")), "brightness"))
         self.bri = QSlider(Qt.Orientation.Horizontal); self.bri.setRange(0, 255)
         self.bri.setValue(255); self.bri.valueChanged.connect(self.streamer.set_brightness); side.addWidget(self.bri)
-        self.b_stream = QPushButton("▶ Старт на экран"); self.b_stream.setCheckable(True)
+        self.b_stream = QPushButton(self.T("stream_start")); self.b_stream.setCheckable(True)
         self.b_stream.clicked.connect(self.toggle_stream); side.addWidget(self.b_stream)
-        b_rot = QPushButton("⟳ Поворот панели"); b_rot.clicked.connect(self._toggle_rotate); side.addWidget(b_rot)
+        self.b_rot = QPushButton(self.T("rotate")); reg(self.b_rot, "rotate")
+        self.b_rot.clicked.connect(self._toggle_rotate); side.addWidget(self.b_rot)
 
         side.addWidget(self._hline())
-        side.addWidget(QLabel("Темы:"))
+        side.addWidget(reg(QLabel(self.T("themes")), "themes"))
         self.theme_combo = QComboBox(); side.addWidget(self.theme_combo)
         throw = QHBoxLayout()
-        for text, fn in (("Загрузить", self.load_theme), ("Сохранить", self.save_theme),
-                         ("Удалить", self.delete_theme)):
-            b = QPushButton(text); b.clicked.connect(fn); throw.addWidget(b)
+        for key, fn in (("t_load", self.load_theme), ("t_save", self.save_theme),
+                        ("t_del", self.delete_theme)):
+            b = QPushButton(self.T(key)); reg(b, key); b.clicked.connect(fn); throw.addWidget(b)
         side.addLayout(throw)
 
         side.addWidget(self._hline())
-        self.chk_tray = QCheckBox("Сворачивать в трей")
+        self.chk_tray = QCheckBox(self.T("tray_chk")); reg(self.chk_tray, "tray_chk")
         self.chk_tray.setChecked(self.settings.value("tray", True, bool))
         self.chk_tray.toggled.connect(lambda v: self.settings.setValue("tray", v)); side.addWidget(self.chk_tray)
-        self.chk_auto = QCheckBox("Запускать с системой")
+        self.chk_auto = QCheckBox(self.T("auto_chk")); reg(self.chk_auto, "auto_chk")
         self.chk_auto.setChecked(os.path.exists(AUTOSTART))
         self.chk_auto.toggled.connect(self._toggle_autostart); side.addWidget(self.chk_auto)
+
         side.addStretch()
 
         side_w = QWidget(); side_w.setLayout(side); side_w.setFixedWidth(270)
         rootl = QHBoxLayout(); rootl.addWidget(self.view, 1); rootl.addWidget(side_w)
         c = QWidget(); c.setLayout(rootl); self.setCentralWidget(c)
 
+        self._app_icon = _make_icon()
+        self.setWindowIcon(self._app_icon)
+        self.setWindowTitle(self.T("title"))
         self._make_tray()
         self._refresh_themes()
         self.load_project()
@@ -580,19 +752,21 @@ class Editor(QMainWindow):
         self.anim = QTimer(self); self.anim.timeout.connect(self._anim_tick); self.anim.start(40)
         self.stat_timer = QTimer(self); self.stat_timer.timeout.connect(self._update_stats); self.stat_timer.start(1000)
         psutil.cpu_percent()
+        self._latest_ver = None; self._update_url = None
+        self._check_update()
+
+    def T(self, key):
+        return TRANSLATIONS[self._lang][key]
 
     def _hline(self):
         f = QFrame(); f.setFrameShape(QFrame.Shape.HLine); return f
 
     def _make_tray(self):
-        pm = QPixmap(64, 64); pm.fill(Qt.GlobalColor.transparent)
-        p = QPainter(pm); p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(40, 120, 220)); p.drawRoundedRect(6, 20, 52, 24, 6, 6); p.end()
-        self.tray = QSystemTrayIcon(QIcon(pm), self); self.tray.setToolTip("Iron Pride Display")
+        self.tray = QSystemTrayIcon(self._app_icon, self); self.tray.setToolTip("Iron Pride Display")
         menu = QMenu()
-        menu.addAction("Показать окно", self.showNormal)
-        menu.addAction("Старт/стоп стрим", lambda: self.b_stream.click())
-        menu.addSeparator(); menu.addAction("Выход", self._quit)
+        menu.addAction(self.T("tray_show"), self.showNormal)
+        menu.addAction(self.T("tray_toggle"), lambda: self.b_stream.click())
+        menu.addSeparator(); menu.addAction(self.T("tray_quit"), self._quit)
         self.tray.setContextMenu(menu); self.tray.activated.connect(self._tray_click); self.tray.show()
 
     def _tray_click(self, reason):
@@ -737,13 +911,13 @@ class Editor(QMainWindow):
             try:
                 self.streamer.start()
             except Exception as ex:
-                self.b_stream.setChecked(False); self.b_stream.setText("ошибка порта")
+                self.b_stream.setChecked(False); self.b_stream.setText(self.T("port_err"))
                 self.tray.showMessage("Iron Pride", str(ex)); return
             self.cap_timer.start(int(1000 / FPS))
-            self.b_stream.setText("■ Стоп"); self.b_stream.setChecked(True)
+            self.b_stream.setText(self.T("stream_stop")); self.b_stream.setChecked(True)
         else:
             self.cap_timer.stop(); self.streamer.stop()
-            self.b_stream.setText("▶ Старт на экран"); self.b_stream.setChecked(False)
+            self.b_stream.setText(self.T("stream_start")); self.b_stream.setChecked(False)
 
     def _anim_tick(self):
         now = time.time(); dt = now - self._last; self._last = now
@@ -815,14 +989,14 @@ class Editor(QMainWindow):
         self.theme_combo.blockSignals(False)
 
     def save_theme(self):
-        name, ok = QInputDialog.getText(self, "Сохранить тему", "Название:")
+        name, ok = QInputDialog.getText(self, self.T("t_name_title"), self.T("t_name_ask"))
         if not (ok and name.strip()): return
         os.makedirs(THEMES_DIR, exist_ok=True)
         with open(self._theme_path(name.strip()), "w") as f:
             json.dump([it.serialize() for it in self.layers], f)
         self._refresh_themes()
         self.theme_combo.setCurrentText(name.strip())
-        self.tray.showMessage("Iron Pride", f"Тема «{name.strip()}» сохранена")
+        self.tray.showMessage("Iron Pride", self.T("t_saved").format(name.strip()))
 
     def load_theme(self):
         name = self.theme_combo.currentText()
@@ -864,6 +1038,88 @@ class Editor(QMainWindow):
     def start_background(self):
         self.autostart_stream()
 
+    def _toggle_lang(self):
+        self._lang = "en" if self._lang == "ru" else "ru"
+        self.settings.setValue("lang", self._lang)
+        self._apply_lang()
+
+    def _apply_lang(self):
+        """Refresh every translatable widget without rebuilding the window."""
+        self.setWindowTitle(self.T("title"))
+        # все зарегистрированные виджеты
+        for w, key, setter in self._tr:
+            if setter == "text": w.setText(self.T(key))
+            elif setter == "placeholder": w.setPlaceholderText(self.T(key))
+        self.b_lang.setText(self.T("lang_btn"))
+        self.b_stream.setText(
+            self.T("stream_stop") if self.b_stream.isChecked() else self.T("stream_start"))
+        # трей-меню
+        menu = self.tray.contextMenu()
+        if menu:
+            labels = [self.T("tray_show"), self.T("tray_toggle"), self.T("tray_quit")]
+            j = 0
+            for a in menu.actions():
+                if not a.isSeparator() and j < len(labels):
+                    a.setText(labels[j]); j += 1
+        # комбобокс фильтров
+        cur = self.filt.currentIndex()
+        self.filt.blockSignals(True); self.filt.clear()
+        self.filt.addItems(self.T("filters")); self.filt.setCurrentIndex(cur)
+        self.filt.blockSignals(False)
+        # кнопка обновления (если видна)
+        if self._latest_ver:
+            self.b_update.setText(self.T("update_avail").format(self._latest_ver))
+
+    # ---- проверка обновлений ----
+    def _check_update(self):
+        self._latest_ver = None
+        def worker():
+            try:
+                req = urllib.request.Request(API_LATEST, headers={"User-Agent": "ironpride"})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    data = json.load(r)
+                tag = (data.get("tag_name") or "").lstrip("v")
+                assets = data.get("assets", [])
+                url = None
+                for a in assets:
+                    if a.get("name") == "ironpride-display":
+                        url = a.get("browser_download_url"); break
+                if tag and self._newer(tag, VERSION):
+                    self._latest_ver = tag; self._update_url = url
+                    QTimer.singleShot(0, self._show_update)
+            except Exception:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
+
+    @staticmethod
+    def _newer(a, b):
+        def parts(s): return [int(x) for x in s.split(".") if x.isdigit()]
+        return parts(a) > parts(b)
+
+    def _show_update(self):
+        if self._latest_ver:
+            self.b_update.setText(self.T("update_avail").format(self._latest_ver))
+            self.b_update.setVisible(True)
+            self.tray.showMessage("Iron Pride", self.T("update_avail").format(self._latest_ver))
+
+    def _do_update(self):
+        # качаем новый бинарь и заменяем текущий (если это собранный бинарь)
+        if not getattr(self, "_update_url", None) or not getattr(sys, "frozen", False):
+            QDesktopServices.openUrl(QUrl(REPO_URL + "/releases/latest")); return
+        try:
+            target = sys.executable
+            tmp = target + ".new"
+            req = urllib.request.Request(self._update_url, headers={"User-Agent": "ironpride"})
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+                f.write(r.read())
+            os.chmod(tmp, 0o755)
+            os.replace(tmp, target)
+            self.tray.showMessage("Iron Pride", "OK — restart to apply / перезапусти")
+            self.b_update.setVisible(False)
+        except Exception as ex:
+            self.tray.showMessage("Iron Pride", f"update failed: {ex}")
+            QDesktopServices.openUrl(QUrl(REPO_URL + "/releases/latest"))
+
     def _quit(self):
         self.save_project(); self.cap_timer.stop(); self.streamer.stop(); QApplication.quit()
 
@@ -871,7 +1127,7 @@ class Editor(QMainWindow):
         self.save_project()
         if self.chk_tray.isChecked() and self.tray.isVisible():
             e.ignore(); self.hide()
-            self.tray.showMessage("Iron Pride", "Свёрнуто в трей, стрим продолжается")
+            self.tray.showMessage("Iron Pride", self.T("tray_msg"))
         else:
             self.cap_timer.stop(); self.streamer.stop(); e.accept()
 
